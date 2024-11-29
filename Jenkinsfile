@@ -3,7 +3,6 @@ pipeline {
 
     environment {
         CLIENT_NAME = ''
-        DB_PASSWORD = '' // Make sure to populate this securely
     }
 
     parameters {
@@ -24,8 +23,9 @@ pipeline {
             steps {
                 script {
                     echo "Creating database backup for client: ${CLIENT_NAME}"
-                    // Make sure DB_PASSWORD is securely passed, you might want to use Jenkins credentials instead
-                    sh "docker exec ${CLIENT_NAME}_db_1 /usr/bin/mysqldump -u root --password=${DB_PASSWORD} --all-databases > ${CLIENT_NAME}_backup.sql"
+                    withCredentials([usernamePassword(credentialsId: 'mysql-credentials', usernameVariable: 'DB_USER', passwordVariable: 'DB_PASSWORD')]) {
+                        sh "docker exec ${CLIENT_NAME}_db_1 /usr/bin/mysqldump -u ${DB_USER} --password=${DB_PASSWORD} --all-databases > ${CLIENT_NAME}_backup.sql"
+                    }
                 }
             }
         }
@@ -41,17 +41,8 @@ pipeline {
 
         stage('Post Actions') {
             steps {
-                script {
-                    echo "Post actions after deleting the client instance"
-                    // Any post-deletion tasks like cleaning up or sending notifications
-                }
+                echo "Pipeline completed for client: ${CLIENT_NAME}"
             }
-        }
-    }
-
-    post {
-        always {
-            echo "Pipeline completed for client: ${CLIENT_NAME}"
         }
     }
 }
