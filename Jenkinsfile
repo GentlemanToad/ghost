@@ -32,7 +32,7 @@ pipeline {
                           database__connection__database: ghostdb_${params.CLIENT_NAME}
                         volumes:
                           - /home/ghost/${params.CLIENT_NAME}/content:/var/lib/ghost/content
-                      
+
                       db_${params.CLIENT_NAME}:
                         image: mariadb:latest
                         container_name: db_${params.CLIENT_NAME}
@@ -45,7 +45,11 @@ pipeline {
                         volumes:
                           - /home/ghost/${params.CLIENT_NAME}/mysql:/var/lib/mysql
                     """
+                    // Write the YAML to a file
                     writeFile file: 'docker-compose.yml', text: dockerComposeContent
+
+                    // Print the file for debugging
+                    sh 'cat docker-compose.yml'
                 }
             }
         }
