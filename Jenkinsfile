@@ -35,7 +35,7 @@ pipeline {
                             # Ensure the backup directory exists
                             mkdir -p ${DB_BACKUP_DIR}
                             # Perform the backup using mysqldump and save the file to the backup directory
-                            docker exec ${params.CLIENT_NAME}_db_container /bin/bash -c \
+                            docker exec db_${params.CLIENT_NAME} /bin/bash -c \
                             "mysqldump -u root -p${params.DB_PASSWORD} --all-databases > ${DB_BACKUP_DIR}/${params.CLIENT_NAME}_db_backup.sql"
                         """
                         echo "Database backup created for client: ${params.CLIENT_NAME}"
@@ -52,8 +52,8 @@ pipeline {
                     echo "Stopping and removing Docker container for client: ${params.CLIENT_NAME}"
                     // Ensure the Docker container for the client is stopped and removed
                     sh """
-                        docker stop ${params.CLIENT_NAME}_db_container
-                        docker rm ${params.CLIENT_NAME}_db_container
+                        docker stop db_${params.CLIENT_NAME}
+                        docker rm db_${params.CLIENT_NAME}
                     """
                     echo "Docker container stopped and removed for client: ${params.CLIENT_NAME}"
                 }
