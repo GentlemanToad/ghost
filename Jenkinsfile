@@ -1,75 +1,68 @@
 pipeline {
     agent any
-
-    environment {
-        CLIENT_NAME = ''
-        PORT = ''
-        DB_PASSWORD = ''
-    }
-
     parameters {
-        string(name: 'CLIENT_NAME', defaultValue: '', description: 'The client name')
-        string(name: 'PORT', defaultValue: '2368', description: 'Port to be used for the client instance')
-        string(name: 'DB_PASSWORD', defaultValue: 'password123', description: 'Database password')
+        string(name: 'CLIENT_NAME', description: 'Client name (e.g., client1)')
+        string(name: 'PORT', description: 'Port for Ghost service (e.g., 2368)')
+        string(name: 'DB_PASSWORD', description: 'Database password for the client')
     }
-
     stages {
-        stage('Prepare Environment') {
+        stage('Clone Repo') {
             steps {
-                script {
-                    echo "Preparing to create instance for client: ${params.CLIENT_NAME}"
-                    CLIENT_NAME = params.CLIENT_NAME
-                    PORT = params.PORT
-                    DB_PASSWORD = params.DB_PASSWORD
-                }
+                git branch: 'main', url: 'https://github.com/GentlemanToad/ghost.git'
             }
         }
-
         stage('Generate Docker Compose') {
             steps {
                 script {
-                    // Generate the docker-compose.yml file dynamically
-                    def composeFile = """
-                    services:
-                      db:
-                        image: mysql:5.7
-                        environment:
-                          MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
-                        ports:
-                          - "${PORT}:3306"
-                      ghost:
-                        image: ghost:latest
-                        environment:
-                          url: "http://localhost:${PORT}"
-                        ports:
-                          - "${PORT}:2368"
-                    """
-                    writeFile(file: "docker-compose.yml", text: composeFile)
-                    echo "docker-compose.yml generated for client: ${CLIENT_NAME}"
+                    // Generate the docker-compose.yml dynamically
+                    def dockerComposeContent = """
+version: "3.3"
+services:
+  ${params.CLIENT_NAME}:
+    image: ghost:latest
+    container_name: ghost_${params.CLIENT_NAME}
+    restart: always
+    ports:
+      - "${params.PORT}:2368"
+    environment:
+      url: http://10.1.1.30:${params.PORT}
+      database__client: mysql
+      database__connection__host: db_${params.CLIENT_NAME}
+      database__connection__user: ghost_${params.CLIENT_NAME}
+      database__connection__password: ${params.DB_PASSWORD}
+      database__connection__database: ghostdb_${params.CLIENT_NAME}
+    volumes:
+      - /home/ghost/${params.CLIENT_NAME}/content:/var/lib/ghost/content
+
+  db_${params.CLIENT_NAME}:
+    image: mariadb:latest
+    container_name: db_${params.CLIENT_NAME}
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password_${params.CLIENT_NAME}
+      MYSQL_USER: ghost_${params.CLIENT_NAME}
+      MYSQL_PASSWORD: ${params.DB_PASSWORD}
+      MYSQL_DATABASE: ghostdb_${params.CLIENT_NAME}
+    volumes:
+      - /home/ghost/${params.CLIENT_NAME}/mysql:/var/lib/mysql
+"""
+                    // Write to docker-compose.yml
+                    writeFile file: 'docker-compose.yml', text: dockerComposeContent
+
+                    // Debug: Show generated file content
+                    sh 'cat docker-compose.yml'
                 }
             }
         }
-
         stage('Deploy Client') {
             steps {
                 script {
-                    echo "Deploying client: ${CLIENT_NAME} on port: ${PORT}"
-                    sh 'docker compose up -d'
+                    // Clean up previous containers (if any)
+                    sh 'docker compose down || true'
                 }
+                // Deploy the new stack
+                sh 'docker compose up -d'
             }
-        }
-
-        stage('Post Actions') {
-            steps {
-                echo "Pipeline completed for action: create"
-            }
-        }
-    }
-
-    post {
-        always {
-            echo "Cleaning up after the pipeline run."
-            sh 'docker compose down'
         }
     }
 }
