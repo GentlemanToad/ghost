@@ -1,68 +1,89 @@
 pipeline {
     agent any
     parameters {
-        string(name: 'CLIENT_NAME', description: 'Client name (e.g., client1)')
-        string(name: 'PORT', description: 'Port for Ghost service (e.g., 2368)')
-        string(name: 'DB_PASSWORD', description: 'Database password for the client')
+        choice(name: 'ACTION', choices: ['create', 'delete'], description: 'Choose to create or delete a client instance')
+        string(name: 'CLIENT_NAME', defaultValue: 'client1', description: 'Name of the client')
+        string(name: 'CLIENT_PORT', defaultValue: '2368', description: 'Port for the Ghost instance (only for creation)')
     }
     stages {
-        stage('Clone Repo') {
+        stage('Prepare Environment') {
             steps {
-                git branch: 'main', url: 'https://github.com/GentlemanToad/ghost.git'
+                script {
+                    if (params.ACTION == 'create') {
+                        echo "Preparing to create instance for client: ${params.CLIENT_NAME}"
+                    } else if (params.ACTION == 'delete') {
+                        echo "Preparing to delete instance for client: ${params.CLIENT_NAME}"
+                    }
+                }
             }
         }
         stage('Generate Docker Compose') {
             steps {
                 script {
-                    // Generate the docker-compose.yml dynamically
-                    def dockerComposeContent = """
-version: "3.3"
+                    if (params.ACTION == 'create') {
+                        def composeFile = """
+version: '3.3'
 services:
-  ${params.CLIENT_NAME}:
+  ${params.CLIENT_NAME}_ghost:
     image: ghost:latest
-    container_name: ghost_${params.CLIENT_NAME}
     restart: always
     ports:
-      - "${params.PORT}:2368"
+      - "${params.CLIENT_PORT}:2368"
+    depends_on:
+      - ${params.CLIENT_NAME}_db
     environment:
-      url: http://10.1.1.30:${params.PORT}
+      url: http://localhost:${params.CLIENT_PORT}
       database__client: mysql
-      database__connection__host: db_${params.CLIENT_NAME}
-      database__connection__user: ghost_${params.CLIENT_NAME}
-      database__connection__password: ${params.DB_PASSWORD}
-      database__connection__database: ghostdb_${params.CLIENT_NAME}
+      database__connection__host: ${params.CLIENT_NAME}_db
+      database__connection__user: ghost
+      database__connection__password: ${params.CLIENT_NAME}_password
+      database__connection__database: ${params.CLIENT_NAME}_db
     volumes:
-      - /home/ghost/${params.CLIENT_NAME}/content:/var/lib/ghost/content
+      - /home/ghost/${params.CLIENT_NAME}_content:/var/lib/ghost/content
 
-  db_${params.CLIENT_NAME}:
+  ${params.CLIENT_NAME}_db:
     image: mariadb:latest
-    container_name: db_${params.CLIENT_NAME}
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root_password_${params.CLIENT_NAME}
-      MYSQL_USER: ghost_${params.CLIENT_NAME}
-      MYSQL_PASSWORD: ${params.DB_PASSWORD}
-      MYSQL_DATABASE: ghostdb_${params.CLIENT_NAME}
+      MYSQL_ROOT_PASSWORD: ${params.CLIENT_NAME}_root_password
+      MYSQL_USER: ghost
+      MYSQL_PASSWORD: ${params.CLIENT_NAME}_password
+      MYSQL_DATABASE: ${params.CLIENT_NAME}_db
     volumes:
-      - /home/ghost/${params.CLIENT_NAME}/mysql:/var/lib/mysql
+      - /home/ghost/${params.CLIENT_NAME}_mysql:/var/lib/mysql
 """
-                    // Write to docker-compose.yml
-                    writeFile file: 'docker-compose.yml', text: dockerComposeContent
-
-                    // Debug: Show generated file content
-                    sh 'cat docker-compose.yml'
+                        writeFile(file: 'docker-compose.yml', text: composeFile)
+                    }
                 }
             }
         }
         stage('Deploy Client') {
+            when {
+                expression { params.ACTION == 'create' }
+            }
+            steps {
+                sh 'docker compose up -d'
+                echo "Instance for client ${params.CLIENT_NAME} created successfully."
+            }
+        }
+        stage('Backup and Delete Client') {
+            when {
+                expression { params.ACTION == 'delete' }
+            }
             steps {
                 script {
-                    // Clean up previous containers (if any)
-                    sh 'docker compose down || true'
+                    echo "Backing up database for client: ${params.CLIENT_NAME}"
+                    sh "docker exec ${params.CLIENT_NAME}_db sh -c 'mysqldump -u root -p${params.CLIENT_NAME}_root_password ${params.CLIENT_NAME}_db > /backup/${params.CLIENT_NAME}_db.sql'"
+                    echo "Database backup completed. Stopping and removing containers."
+                    sh 'docker compose down'
+                    echo "Instance for client ${params.CLIENT_NAME} deleted successfully."
                 }
-                // Deploy the new stack
-                sh 'docker compose up -d'
             }
+        }
+    }
+    post {
+        always {
+            echo "Pipeline completed for action: ${params.ACTION}"
         }
     }
 }
