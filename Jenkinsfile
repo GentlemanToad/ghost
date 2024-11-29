@@ -4,6 +4,7 @@ pipeline {
     parameters {
         string(name: 'CLIENT_NAME', defaultValue: '', description: 'Name of the client')
         string(name: 'BACKUP_DIR', defaultValue: '/home/ghost/backups', description: 'Directory to store backups')
+        string(name: 'DB_PASSWORD', defaultValue: '', description: 'DB Password'}
     }
 
     stages {
