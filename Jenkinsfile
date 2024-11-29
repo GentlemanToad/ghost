@@ -23,10 +23,18 @@ pipeline {
                         // Create backup directory if it doesn't exist
                         sh "mkdir -p ${params.BACKUP_DIR}"
 
-                        // Run mysqldump to backup the MySQL database
+                        // Retrieve the IP address of the MySQL container
+                        def dbHostIP = sh(script: "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' db_${params.CLIENT_NAME}", returnStdout: true).trim()
+
+                        // If the IP address is not found, raise an error
+                        if (dbHostIP == '') {
+                            error "Could not retrieve IP address for MySQL container db_${params.CLIENT_NAME}."
+                        }
+
+                        // Run mysqldump to backup the MySQL database using the retrieved IP
                         def backupFile = "${params.BACKUP_DIR}/ghostdb_${params.CLIENT_NAME}_backup.sql"
                         sh """
-                            mysqldump -h db_${params.CLIENT_NAME} -u ghost_${params.CLIENT_NAME} -p${params.DB_PASSWORD} ghostdb_${params.CLIENT_NAME} > ${backupFile}
+                            mysqldump -h ${dbHostIP} -u ghost_${params.CLIENT_NAME} -p${params.DB_PASSWORD} ghostdb_${params.CLIENT_NAME} > ${backupFile}
                         """
                         echo "Database backup completed for client: ${params.CLIENT_NAME}. Backup stored in: ${backupFile}"
                     } else {
