@@ -7,7 +7,8 @@ pipeline {
     }
 
     environment {
-        DB_BACKUP_DIR = "/backups"  // Customize the backup location as needed
+        // Adjusted the backup path to the correct directory
+        DB_BACKUP_DIR = "/home/ghost/backups"  // Correct backup location
     }
 
     stages {
@@ -29,12 +30,13 @@ pipeline {
                     // Check if the client name and DB password parameters are provided
                     if (params.CLIENT_NAME && params.DB_PASSWORD) {
                         echo "Backing up the database for client: ${params.CLIENT_NAME}"
-                        // Call a script or command to back up the database using the provided password
-                        // For example, this could be a command to run a Docker container with a database backup command
+                        // Backing up the database to the specified directory
                         sh """
+                            # Ensure the backup directory exists
                             mkdir -p ${DB_BACKUP_DIR}
+                            # Perform the backup using mysqldump and save the file to the backup directory
                             docker exec ${params.CLIENT_NAME}_db_container /bin/bash -c \
-                            "mysqldump -u root -p${params.DB_PASSWORD} --all-databases > /backup/${params.CLIENT_NAME}_db_backup.sql"
+                            "mysqldump -u root -p${params.DB_PASSWORD} --all-databases > ${DB_BACKUP_DIR}/${params.CLIENT_NAME}_db_backup.sql"
                         """
                         echo "Database backup created for client: ${params.CLIENT_NAME}"
                     } else {
