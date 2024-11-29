@@ -2,11 +2,12 @@ pipeline {
     agent any
 
     parameters {
+        string(name: 'CLIENT_NAME', defaultValue: '', description: 'Name of the client')
         string(name: 'DB_PASSWORD', defaultValue: '', description: 'Password for the client database')
     }
 
     environment {
-        CLIENT_NAME = 'nitenite'  // You can modify this as needed or make it a parameter too
+        DB_BACKUP_DIR = "/backups"  // Customize the backup location as needed
     }
 
     stages {
@@ -15,39 +16,51 @@ pipeline {
                 checkout scm
             }
         }
-        
+
         stage('Prepare Environment') {
             steps {
-                echo "Preparing to delete instance for client: ${CLIENT_NAME}"
+                echo "Preparing to delete instance for client: ${params.CLIENT_NAME}"
             }
         }
 
         stage('Backup Database') {
             steps {
-                echo "Creating database backup for client: ${CLIENT_NAME}"
-                // Simulating backup logic using the DB_PASSWORD parameter
                 script {
-                    def password = params.DB_PASSWORD
-                    if (password) {
-                        echo "Using password for backup: ${password}"
-                        // Example: Call the backup script here with the password
+                    // Check if the client name and DB password parameters are provided
+                    if (params.CLIENT_NAME && params.DB_PASSWORD) {
+                        echo "Backing up the database for client: ${params.CLIENT_NAME}"
+                        // Call a script or command to back up the database using the provided password
+                        // For example, this could be a command to run a Docker container with a database backup command
+                        sh """
+                            mkdir -p ${DB_BACKUP_DIR}
+                            docker exec ${params.CLIENT_NAME}_db_container /bin/bash -c \
+                            "mysqldump -u root -p${params.DB_PASSWORD} --all-databases > /backup/${params.CLIENT_NAME}_db_backup.sql"
+                        """
+                        echo "Database backup created for client: ${params.CLIENT_NAME}"
                     } else {
-                        error "No password provided for client ${CLIENT_NAME}"
+                        error "Client name or database password not provided!"
                     }
                 }
             }
         }
 
-        stage('Delete Client') {
+        stage('Stop and Remove Docker Instance') {
             steps {
-                echo "Deleting client: ${CLIENT_NAME}"
-                // Actual client deletion logic here
+                script {
+                    echo "Stopping and removing Docker container for client: ${params.CLIENT_NAME}"
+                    // Ensure the Docker container for the client is stopped and removed
+                    sh """
+                        docker stop ${params.CLIENT_NAME}_db_container
+                        docker rm ${params.CLIENT_NAME}_db_container
+                    """
+                    echo "Docker container stopped and removed for client: ${params.CLIENT_NAME}"
+                }
             }
         }
 
         stage('Post Actions') {
             steps {
-                echo "Pipeline completed for client: ${CLIENT_NAME}"
+                echo "Pipeline completed for client: ${params.CLIENT_NAME}"
             }
         }
     }
